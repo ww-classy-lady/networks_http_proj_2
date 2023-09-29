@@ -11,7 +11,19 @@
 #define ARG_HTTPReq 0x4 //q
 #define ARG_HTTPRes 0x6 //r
 #define ARG_CONT 0x8 //o
-//u
+//General order of methods:
+//parseArgs (gets the url pointer(for u, d, q, r and SOCKETS) and the filename for -o)
+//parseURL
+//SOCKETS(will call a helper method to generate the http request, store that response...and blah blah)
+//^ the helper to generate the http request follows:
+//GET [url_filename] HTTP/1.0\r\n
+//Host: [hostname]\r\n
+//User-Agent: CWRU CSDS 325 SimpleClient 1.0\r\n
+//\r\n
+
+//use the order char to print out 
+//d q or r in the correct order
+
 //URL handling: if the optarg (after -u is not http://...throw error from parsingURL)
 //o
 //FileName handling: if the optarg (after -o is not a valid file name then error from parsingFilename)
@@ -20,6 +32,10 @@
 //-d to be printed regardless of whether there are errors fetching the web page (sockets).
 //-d will NOT be printed if there are errors in the command line options given by the user.
 //q
+//without networking: will have the OUT: ahead of everything and just prints out the message
+//with networking:
+//      *generate the http message in the ideal format in a helper method
+//      *the socket code probably calls
 //r
 bool uDetected = false; //initially false as u is not detected
 bool oDetected = false; //initially false as o is not detected
@@ -56,19 +72,19 @@ void parseargs(int argc, char *argv [])
                 uDetected = true;
                 url = optarg;
                 //strcat(url, optarg);
-                fprintf (stdout, "%s\n", url);
-                printf ("-u detected: call the parseURL method to parse the url into hostname, urlfilename/path\n");
+                //fprintf (stdout, "%s\n", url);
+                //printf ("-u detected: call the parseURL method to parse the url into hostname, urlfilename/path\n");
                 break;
             case 'o':
                 oDetected = true;
                 filename = optarg;
                 //strcat(filename, optarg);
-                printf ("-o detected: store the response into a file\n");
-                fprintf (stdout, "%s\n", filename);
+                //printf ("-o detected: store the response into a file\n");
+                //fprintf (stdout, "%s\n", filename);
                 break;
             case 'd':
                 dDetected = true;
-                printf ("-d detected: should call dbg to make the dbg messages based on info from -u and -o\n");
+                //printf ("-d detected: should call dbg to make the dbg messages based on info from -u and -o\n");
                 strcat(order, "d");
                 break;
             case 'q':
@@ -133,11 +149,20 @@ void parseURL(char* link)
         fprintf(stderr, "Error: url does not begin with http:// \n");
     }
 }
+//d operation below
 void printD(char *copy_hostname, char *copy_web_file, char *copy_filename)
 {
     printf("DBG: host: %s\n", copy_hostname);
     printf("DBG: web_file: %s\n", copy_web_file);
     printf("DBG: output_file: %s\n", copy_filename);
+}
+void printQ(char *copy_web_file, char *copy_hostname)
+{
+    //difference from the helper that
+    //sends to the web server: the blank line that terminates the HTTP request must be excluded from the -q output!
+    printf("OUT: GET %s HTTP/1.0\n", copy_web_file);
+    printf("OUT: Host: %s\n", copy_hostname);
+    printf("OUT: User-Agent: CWRU CSDS 325 SimpleClient 1.0\n");
 }
 int main (int argc, char *argv [])
 {
@@ -155,6 +180,10 @@ int main (int argc, char *argv [])
         if(dDetected && urlWrong == false)
         {
             printD(hostname, web_file, filename);
+        }
+        else if(qDetected && urlWrong == false)
+        {
+            printQ(web_file, hostname);
         }
         else
         {
