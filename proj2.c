@@ -17,6 +17,8 @@
 //FileName handling: if the optarg (after -o is not a valid file name then error from parsingFilename)
 //
 //d
+//-d to be printed regardless of whether there are errors fetching the web page (sockets).
+//-d will NOT be printed if there are errors in the command line options given by the user.
 //q
 //r
 bool uDetected = false; //initially false as u is not detected
@@ -24,9 +26,13 @@ bool oDetected = false; //initially false as o is not detected
 bool dDetected = false; //initially false as d is not detected
 bool qDetected = false; //initially false as q is not detected
 bool rDetected = false; //initially false as r is not detected
-char *url = NULL; //the url after -u
-char *filename = NULL; //the output file name after -o
+char* url = NULL; //the url after -u
+bool urlWrong = false;
+char* filename = NULL; //the output file name after -o
 char order[3] = "";
+char* hostname = NULL; //hostname that will be filled in parseURL
+char* web_file = NULL;  //webfile that will be filled in in web_file
+char httpForm[] = "http://";
 void usage (char *progname)
 {
     fprintf (stderr,"%s ./proj2 -u URL [-d] [-q] [-r] -o filename\n", progname);
@@ -38,9 +44,10 @@ void usage (char *progname)
 void parseargs(int argc, char *argv [])
 {
     int opt;
-    for (int i = 0; i < argc; i++) {
+    /*for(int i = 0; i < argc; i++) 
+    {
         printf("argv[%d]: %s\n", i, argv[i]); //for checking the elements in the command given
-    }
+    }*/
     while((opt = getopt (argc, argv, "u:o:dqr")) != -1)
     {
         switch(opt)
@@ -80,47 +87,57 @@ void parseargs(int argc, char *argv [])
                 usage(argv [0]);
         }
     }
-    if (argv[1] == NULL)
+    if(argv[1] == NULL)
     {
         fprintf (stderr,"error: no command line option given\n"); //fprintf is for errors only
         usage (argv [0]);
     }
 }
+
 void parseURL(char* link)
 {
     //have to handle null link, have to handle if link is -o or anythingelse
-    size_t linkLen = strlen(link);
-    char urlLink[linkLen + 1];
-    strcpy(urlLink, link);
-    //"http://www.example.org/index/readme.html";
-    char hostname[strlen(urlLink)/2]; //give a length for the hostname as half of the url
-    char web_file[strlen(urlLink)/2];  //give a length for the web_file as half of the url
-    char httpForm[] = "http://";
-    if (strncasecmp(urlLink, httpForm, 7) == 0) 
+    
+    //converting link to char []
+    if(strncasecmp(link, httpForm, strlen(httpForm)) == 0) 
     {
         //check if the link starts with "http://" and if so strncasecmp should return 0 for equality
-        char *after_httpForm = urlLink + 7; //set pointer to the 7th element, which is the first char
+        char *after_httpForm = link + strlen(httpForm); //set pointer to right after http://, which is the first char
         //of hostname
         char *slash = strchr(after_httpForm, '/'); //set pointer to the slash before filename
-        if (slash != NULL) {
+        if(slash != NULL) 
+        {
             size_t hostname_Length = slash - after_httpForm; //finds the length of the hostname
+            hostname = (char*)malloc(hostname_Length+1);
             strncpy(hostname, after_httpForm, hostname_Length); //copies from after_httpForm the hostname using
             //the hostname's length to hostname string
             hostname[hostname_Length] = '\0'; //add null terminator
+            size_t web_file_Length = strlen(slash);
+            web_file = (char*)malloc(web_file_Length + 1);
             strcpy(web_file, slash); 
-        } else {
+        } 
+        else{
             // No '/' found after "http://", assume the entire string is the hostname
+            size_t hostname_length = strlen(after_httpForm);
+            hostname = (char*)malloc(hostname_length+1);
             strcpy(hostname, after_httpForm);
+            hostname[hostname_length] = '\0'; //add null terminator
+            size_t webfile_length = strlen("/");
+            web_file =(char*)malloc(webfile_length + 1);
             strcpy(web_file, "/");
+            web_file[webfile_length] = '\0'; //add null terminator
         }
-
-        // Print the extracted hostname and web file path
-        printf("Hostname: %s\n", hostname);
-        printf("Web File: %s\n", web_file);
     } 
     else{
-        fprintf(stderr, "Error: url does not begin with https:// \n");
+        urlWrong = true;
+        fprintf(stderr, "Error: url does not begin with http:// \n");
     }
+}
+void printD(char *copy_hostname, char *copy_web_file, char *copy_filename)
+{
+    printf("DBG: host: %s\n", copy_hostname);
+    printf("DBG: web_file: %s\n", copy_web_file);
+    printf("DBG: output_file: %s\n", copy_filename);
 }
 int main (int argc, char *argv [])
 {
@@ -128,12 +145,24 @@ int main (int argc, char *argv [])
     //should do dqr operations last after sending sockets (?)
     //once finished seeing -u and -o then send the request
     parseargs(argc, argv);
-    printf("%s\n", order);
+    //printf("%s\n", order);
     if(uDetected && oDetected)
     {
         //continue with socket, 
         //then dpr seq printouts (if seq char is greater than 3, too much argument might need to throw error)
-        parseURL(url);
+        parseURL(url); //parse url to hostname, web_file
+        //test -d
+        if(dDetected && urlWrong == false)
+        {
+            printD(hostname, web_file, filename);
+        }
+        else
+        {
+            printf("d is not detected or url is wrong\n");
+        }
+        //test -q
+        //test -r 
+        //after all -d,-q,-r passed/finished, find a way to print them in order
     }
     else if(url == NULL)
     {
