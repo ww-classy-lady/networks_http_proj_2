@@ -3,7 +3,11 @@
 #include <stdlib.h>
 #include <unistd.h>
 #include <stdbool.h> 
+#include <strings.h>
 #include <string.h>
+#include <netdb.h>
+#include <sys/socket.h>
+#include <netinet/in.h>
 //./proj2 -u URL [-d] [-q] [-r] -o filename
 
 #define ARG_URL 0x1 //u
@@ -11,6 +15,8 @@
 #define ARG_HTTPReq 0x4 //q
 #define ARG_HTTPRes 0x6 //r
 #define ARG_CONT 0x8 //o
+#define PROTOCOL "tcp"
+#define BUFLEN 1024
 //General order of methods:
 //parseArgs (gets the url pointer(for u, d, q, r and SOCKETS) and the filename for -o)
 //parseURL
@@ -49,6 +55,8 @@ char order[3] = "";
 char* hostname = NULL; //hostname that will be filled in parseURL
 char* web_file = NULL;  //webfile that will be filled in in web_file
 char httpForm[] = "http://";
+int port = 80; //already define http port to be 80 used in send_receive_sockets()
+char buffer [BUFLEN]; //buffer string used to store http response and then used to parse the response
 void usage (char *progname)
 {
     fprintf (stderr,"%s ./proj2 -u URL [-d] [-q] [-r] -o filename\n", progname);
@@ -149,6 +157,77 @@ void parseURL(char* link)
         fprintf(stderr, "Error: url does not begin with http:// \n");
     }
 }
+char* buildRequest(char *host_name, char *web_file)
+{
+    //build the pointer string http request for socket send and receive
+    char *getFirst = "GET ";
+    char *getLater = " HTTP/1.0\r\n";
+    char *hostFirst = "Host: ";
+    char *hostLater = "\r\n";
+    char *result =  "User-Agent: CWRU CSDS 325 SimpleClient 1.0\r\n";
+    size_t total = strlen(getFirst) + strlen(web_file) + strlen(getLater) 
+    + strlen(hostFirst) + strlen(host_name) + strlen(hostLater) 
+    + strlen(result) + strlen(hostLater);
+    char *request = (char *)malloc(total+1);
+    strcpy(request, getFirst);
+    strcat(request, web_file);
+    strcat(request, getLater);
+    strcat(request, hostFirst);
+    strcat(request, host_name);
+    strcat(request, hostLater);
+    strcat(request, result);
+    strcat(request, hostLater);
+    return request;
+
+}
+void send_receive_Sockets(char *host_name, char *web_file)
+{
+    printf("\nWelcome to send and receive sockets\n");
+    char *temp_hostname[] = {host_name};
+    struct sockaddr_in sin;
+    struct hostent *hinfo;
+    struct protoent *protoinfo;
+    int sd, ret;
+
+    //usage, not really relevant right now
+    /*if (argc != REQUIRED_ARGC)
+        usage (argv [0]);*/
+
+    /* lookup the hostname */
+    hinfo = gethostbyname(temp_hostname [0]); //set the struct hostent to char *pointer type since already have the hostname from parseURL
+    if (hinfo == NULL)
+        printf("cannot find hostname\n");
+
+    /* set endpoint information */
+    memset ((char *)&sin, 0x0, sizeof (sin));
+    sin.sin_family = AF_INET;
+    sin.sin_port = htons (port); //we know port is 80 as an int for http request and response 
+    memcpy ((char *)&sin.sin_addr,hinfo->h_addr,hinfo->h_length);
+
+    if ((protoinfo = getprotobyname (PROTOCOL)) == NULL)
+        printf("cannot find protocol information for %s\n", PROTOCOL);
+
+    /* allocate a socket */
+    /*   would be SOCK_DGRAM for UDP */
+    sd = socket(PF_INET, SOCK_STREAM, protoinfo->p_proto);
+    if (sd < 0)
+        printf("cannot create socket\n");
+
+    /* connect the socket */
+    if (connect (sd, (struct sockaddr *)&sin, sizeof(sin)) < 0)
+        printf("cannot connect\n");
+
+    /* snarf whatever server provides and print it */
+    memset (buffer,0x0,BUFLEN);
+    ret = read (sd,buffer,BUFLEN - 1);
+    if (ret < 0)
+        printf("reading error\n");
+    fprintf (stdout,"%s\n",buffer);
+            
+    /* close & exit */
+    close (sd);
+    exit (0);
+}
 //d operation below
 void printD(char *copy_hostname, char *copy_web_file, char *copy_filename)
 {
@@ -176,18 +255,21 @@ int main (int argc, char *argv [])
         //continue with socket, 
         //then dpr seq printouts (if seq char is greater than 3, too much argument might need to throw error)
         parseURL(url); //parse url to hostname, web_file
+        //send and receive sockets
+        send_receive_Sockets(hostname, web_file);
+        //printf("%s\n", buildRequest(hostname,web_file)); //check buildRequest
         //test -d
         if(dDetected && urlWrong == false)
         {
-            printD(hostname, web_file, filename);
+            //printD(hostname, web_file, filename);
         }
         else if(qDetected && urlWrong == false)
         {
-            printQ(web_file, hostname);
+            //printQ(web_file, hostname);
         }
         else
         {
-            printf("d is not detected or url is wrong\n");
+            //printf("d is not detected or url is wrong\n");
         }
         //test -q
         //test -r 
