@@ -57,6 +57,7 @@ char* web_file = NULL;  //webfile that will be filled in in web_file
 char httpForm[] = "http://";
 int port = 80; //already define http port to be 80 used in send_receive_sockets()
 char buffer [BUFLEN]; //buffer string used to store http response and then used to parse the response
+char* httpResponse = NULL;
 void usage (char *progname)
 {
     fprintf (stderr,"%s ./proj2 -u URL [-d] [-q] [-r] -o filename\n", progname);
@@ -187,8 +188,9 @@ void send_receive_Sockets(char *host_name, char *web_file)
     struct sockaddr_in sin;
     struct hostent *hinfo;
     struct protoent *protoinfo;
+    char *request;
     int sd, ret;
-
+    ssize_t sendReturn;
     //usage, not really relevant right now
     /*if (argc != REQUIRED_ARGC)
         usage (argv [0]);*/
@@ -216,13 +218,23 @@ void send_receive_Sockets(char *host_name, char *web_file)
     /* connect the socket */
     if (connect (sd, (struct sockaddr *)&sin, sizeof(sin)) < 0)
         printf("cannot connect\n");
-
+    /* build an http request*/
+    request = buildRequest(host_name,web_file);
+    /* send an http request*/
+    sendReturn = send(sd, request, strlen(request), 0);
+    if(sendReturn == -1)
+    {
+        fprintf(stderr, "Error: send has error\n");
+    }
     /* snarf whatever server provides and print it */
     memset (buffer,0x0,BUFLEN);
     ret = read (sd,buffer,BUFLEN - 1);
     if (ret < 0)
         printf("reading error\n");
     fprintf (stdout,"%s\n",buffer);
+    /* parse the http response */
+    
+    /* process the response body */
             
     /* close & exit */
     close (sd);
