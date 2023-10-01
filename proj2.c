@@ -1,4 +1,3 @@
-//./proj2 to run
 #include <stdio.h>
 #include <stdlib.h>
 #include <unistd.h>
@@ -9,7 +8,13 @@
 #include <sys/socket.h>
 #include <netinet/in.h>
 //./proj2 -u URL [-d] [-q] [-r] -o filename
-
+//TO DO:
+// *** make buffer accept very big size (reallocate space if needed during storing response)
+// *** make and write data to file
+// *** determine (parse content type if necessary in sockets code) data type to know fwrite or fputs
+// *** clean up constants
+// *** order logic
+// *** attempt 425 stuff
 #define ARG_URL 0x1 //u
 #define ARG_DBG 0x2 //d
 #define ARG_HTTPReq 0x4 //q
@@ -53,7 +58,6 @@ bool need_to_get_more_response = true; //will be true once all messages are read
 char* url = NULL; //the url after -u
 bool urlWrong = false;
 char* filename = NULL; //the output file name after -o
-char order[3] = "";
 char* hostname = NULL; //hostname that will be filled in parseURL
 char* web_file = NULL;  //webfile that will be filled in in web_file
 char httpForm[] = "http://";
@@ -66,6 +70,7 @@ char* rn = "\r\n"; //used for printing and adding INC to r
 char* code = (char*)malloc(4); //used to store the response code and the null terminator
 int codeLength = 3;
 char* modified_header = NULL;
+int ok = 200;
 void usage (char *progname)
 {
     fprintf (stderr,"%s ./proj2 -u URL [-d] [-q] [-r] -o filename\n", progname);
@@ -102,18 +107,14 @@ void parseargs(int argc, char *argv [])
             case 'd':
                 dDetected = true;
                 //printf ("-d detected: should call dbg to make the dbg messages based on info from -u and -o\n");
-                strcat(order, "d");
                 break;
             case 'q':
                 qDetected = true;
-                printf ("-q detected: should use a method to  print HTTP request with OUT: ...etc\n");
-                strcat(order, "q");
+                //printf ("-q detected: should use a method to  print HTTP request with OUT: ...etc\n");
                 //put this element in the sequence char to track order
                 break;
             case 'r':
                 rDetected = true;
-                printf ("-r detected: should make a method to print HTTP response\n");
-                strcat(order, "r");
                 break;
             case '?':
             default:
@@ -284,7 +285,7 @@ void send_receive_Sockets(char *host_name, char *web_file)
     /* process the response body */
     char *after_rnrn = lastofHeader + strlen(rnrn);
     size_t bodyLength = strlen(after_rnrn); //calculate the string's length starting at the pointer located right after \r\n\r\n
-    responseBody = (char*)malloc(bodyLength+1);
+    responseBody = (char *)malloc(bodyLength+1);
     strcpy(responseBody, after_rnrn);
     responseBody[bodyLength] = '\0';
     /* process the http response code from the header*/       
@@ -300,25 +301,26 @@ void printR(char *httpResponseHeader, char *rn)
     //calculate the number of lines in header that ends with \r\n
     int numLines = 0;
     char* header_copy = strdup(httpResponseHeader); //make a copy of header
-    char *pointer_of_rn = strstr(header_copy, rn);
-    while(pointer_of_rn != NULL)
+    char *pointer_of_rn = strstr(header_copy, rn); //start to point the first occurrence of rn from the header
+    while(pointer_of_rn != NULL) //while we can still find the next \r\n in the current scope of header
     {
-        numLines++;
+        numLines++; //increment the number of lines
         pointer_of_rn += strlen(rn); //start at the next line
-        pointer_of_rn = strstr(pointer_of_rn, rn); //find  the rn in the rest of the head after moving pointer from prev ;ine to the next line
+        pointer_of_rn = strstr(pointer_of_rn, rn); //find  the rn in the rest of the header after moving pointer from prev ;ine to the next line
     }
     size_t new_header_length = strlen(header_copy) + strlen("INC: ") + numLines * strlen("INC: "); //allocate INC: one more time for the last line without \r\n
-    modified_header = (char *)malloc(new_header_length + 1);
-    modified_header[0] = '\0';
-    char *line_without_rn = strtok(header_copy, rn);
+    modified_header = (char *)malloc(new_header_length + 1); 
+    modified_header[0] = '\0'; //set null terminator in place for the empty string
+    char *line_without_rn = strtok(header_copy, rn); //set the first middle of the line to be before rn
     while(line_without_rn !=NULL)
     {
-        strcat(modified_header, "INC: ");
-        strcat(modified_header, line_without_rn);
-        strcat(modified_header, rn);
-        line_without_rn = strtok(NULL, rn); //cobtinue to get the next line without rn substring from httpResponseHeader (same string)
+        strcat(modified_header, "INC: "); //concat INC: to header
+        strcat(modified_header, line_without_rn); //add middle of the line
+        strcat(modified_header, rn); //end with \r\n
+        line_without_rn = strtok(NULL, rn); //continue to get the next line without rn substring from httpResponseHeader (same string)
     }
     printf("%s", modified_header);
+    free(header_copy); //free the mutable copy of the httpheader
     free(modified_header);
 
 }
@@ -341,32 +343,47 @@ int main (int argc, char *argv [])
 {
     //-o file will be initiated if -u is legit and response is ok 200
     //should do dqr operations last after sending sockets (?) yea
-    //once finished seeing -u and -o then send the request
+    //once finished seeing -u and -o then
+    //continue with socket, 
+    //then dpr seq printouts (if seq char is greater than 3, too much argument might need to throw error)
     parseargs(argc, argv);
-    //printf("%s\n", order);
     if(uDetected && oDetected)
     {
-        //continue with socket, 
-        //then dpr seq printouts (if seq char is greater than 3, too much argument might need to throw error)
         parseURL(url); //parse url to hostname, web_file
-        //send and receive sockets
-        send_receive_Sockets(hostname, web_file);
-        //fprintf (stdout,"%s\n",buffer); //works, response saved to a limited size buffer
-        //test -d
-        //free(buffer);
-        printR(httpResponseHeader, rn);
-        if(dDetected && urlWrong == false)
+        if(urlWrong == true)
         {
-            //printD(hostname, web_file, filename);
-        }
-        else if(qDetected && urlWrong == false)
-        {
-            //printQ(web_file, hostname);
+            //don't do anything
         }
         else
         {
-            //printf("d is not detected or url is wrong\n");
+            //send and receive sockets
+            send_receive_Sockets(hostname, web_file);
+            //print d, q, r
+            if(dDetected)
+            {
+                printD(hostname, web_file, filename);
+            }
+            if(qDetected)
+            {
+                printQ(web_file, hostname);
+            }
+            if(rDetected)
+            {
+                printR(httpResponseHeader, rn);
+            }
+            //do -o
+            if(ok != atoi(code))
+            {
+                printf("ERROR: non-200 response code");
+            }
+            //else proceed with making file
+            
         }
+    
+        //fprintf (stdout,"%s\n",buffer); //works, response saved to a limited size buffer
+        //test -d
+        //free(buffer);
+        //printR(httpResponseHeader, rn);
         //test -q
         //test -r 
         //after all -d,-q,-r passed/finished, find a way to print them in order
