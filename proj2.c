@@ -48,6 +48,7 @@ bool oDetected = false; //initially false as o is not detected
 bool dDetected = false; //initially false as d is not detected
 bool qDetected = false; //initially false as q is not detected
 bool rDetected = false; //initially false as r is not detected
+bool need_to_get_more_response = true; //will be true once all messages are read
 char* url = NULL; //the url after -u
 bool urlWrong = false;
 char* filename = NULL; //the output file name after -o
@@ -56,8 +57,10 @@ char* hostname = NULL; //hostname that will be filled in parseURL
 char* web_file = NULL;  //webfile that will be filled in in web_file
 char httpForm[] = "http://";
 int port = 80; //already define http port to be 80 used in send_receive_sockets()
-char buffer [BUFLEN]; //buffer string used to store http response and then used to parse the response
-char* httpResponse = NULL;
+char buffer[BUFLEN]; //buffer string used to store http response and then used to parse the response
+char* httpResponseHeader = NULL;
+char resHeader[BUFLEN];
+char* response = NULL; //try to replace buffer with this
 void usage (char *progname)
 {
     fprintf (stderr,"%s ./proj2 -u URL [-d] [-q] [-r] -o filename\n", progname);
@@ -161,15 +164,15 @@ void parseURL(char* link)
 char* buildRequest(char *host_name, char *web_file)
 {
     //build the pointer string http request for socket send and receive
-    char *getFirst = "GET ";
-    char *getLater = " HTTP/1.0\r\n";
-    char *hostFirst = "Host: ";
-    char *hostLater = "\r\n";
-    char *result =  "User-Agent: CWRU CSDS 325 SimpleClient 1.0\r\n";
-    size_t total = strlen(getFirst) + strlen(web_file) + strlen(getLater) 
-    + strlen(hostFirst) + strlen(host_name) + strlen(hostLater) 
-    + strlen(result) + strlen(hostLater);
-    char *request = (char *)malloc(total+1);
+    //char *getFirst = "GET ";
+    //char *getLater = " HTTP/1.0\r\n";
+    //char *hostFirst = "Host: ";
+    //char *hostLater = "\r\n";
+    //char *result =  "User-Agent: CWRU CSDS 325 SimpleClient 1.0\r\n";
+    //size_t total = strlen(getFirst) + strlen(web_file) + strlen(getLater) 
+    //+ strlen(hostFirst) + strlen(host_name) + strlen(hostLater) 
+    //+ strlen(result) + strlen(hostLater);
+    /*char *request = (char *)malloc(total+1);
     strcpy(request, getFirst);
     strcat(request, web_file);
     strcat(request, getLater);
@@ -177,13 +180,18 @@ char* buildRequest(char *host_name, char *web_file)
     strcat(request, host_name);
     strcat(request, hostLater);
     strcat(request, result);
-    strcat(request, hostLater);
-    return request;
+    strcat(request, hostLater); */
+    char *result = (char*)malloc(BUFLEN);
+    snprintf(result, BUFLEN,
+            "GET %s HTTP/1.0\r\n"
+            "Host: %s\r\n"
+            "User-Agent: CWRU CSDS 325 SimpleClient 1.0\r\n"
+            "\r\n", web_file, host_name);
+    return result;
 
 }
 void send_receive_Sockets(char *host_name, char *web_file)
 {
-    printf("\nWelcome to send and receive sockets\n");
     char *temp_hostname[] = {host_name};
     struct sockaddr_in sin;
     struct hostent *hinfo;
@@ -191,6 +199,7 @@ void send_receive_Sockets(char *host_name, char *web_file)
     char *request;
     int sd, ret;
     ssize_t sendReturn;
+    size_t bufferSize;
     //usage, not really relevant right now
     /*if (argc != REQUIRED_ARGC)
         usage (argv [0]);*/
@@ -212,11 +221,11 @@ void send_receive_Sockets(char *host_name, char *web_file)
     /* allocate a socket */
     /*   would be SOCK_DGRAM for UDP */
     sd = socket(PF_INET, SOCK_STREAM, protoinfo->p_proto);
-    if (sd < 0)
+    if(sd < 0)
         printf("cannot create socket\n");
 
     /* connect the socket */
-    if (connect (sd, (struct sockaddr *)&sin, sizeof(sin)) < 0)
+    if(connect(sd, (struct sockaddr *)&sin, sizeof(sin)) < 0)
         printf("cannot connect\n");
     /* build an http request*/
     request = buildRequest(host_name,web_file);
@@ -227,18 +236,42 @@ void send_receive_Sockets(char *host_name, char *web_file)
         fprintf(stderr, "Error: send has error\n");
     }
     /* snarf whatever server provides and print it */
-    memset (buffer,0x0,BUFLEN);
-    ret = read (sd,buffer,BUFLEN - 1);
-    if (ret < 0)
+
+    memset(buffer,0x0,BUFLEN);
+    ret = read(sd, buffer, BUFLEN -1);
+    /*bufferSize = sizeof(buffer) - 1;
+    while(need_to_get_more_response)
+    {
+        ret = read(sd, buffer, bufferSize);
+        if(ret < 0)
+        {
+            printf("reading error\n");
+            break;
+        }
+        else if(ret == 0)
+        {
+            //finished connection and all response received
+            break;
+        }
+        bufferSize+= ret; //ad the size received by ret to the total bufferSize in order to reallocate more space for buffer
+        buffer = (char *)realloc(buffer, bufferSize);
+
+    }*/
+    if(ret < 0)
+    {
         printf("reading error\n");
-    fprintf (stdout,"%s\n",buffer);
+    }
+    //fprintf (stdout,"%s\n",buffer);
+    //httpResponseHeader = strstr(buffer, "\r\n\r\n");
+    //httpResponseHeader = strstr(buffer, "\r\n\r\n");
+    //*httpResponseHeader ='\0'; //null terminate header
+    //strcpy(resHeader, httpResponseHeader);
     /* parse the http response */
     
     /* process the response body */
             
     /* close & exit */
     close (sd);
-    exit (0);
 }
 //d operation below
 void printD(char *copy_hostname, char *copy_web_file, char *copy_filename)
@@ -269,6 +302,8 @@ int main (int argc, char *argv [])
         parseURL(url); //parse url to hostname, web_file
         //send and receive sockets
         send_receive_Sockets(hostname, web_file);
+        fprintf (stdout,"%s\n",buffer); //works, response saved to a limited size buffer
+        //fprintf (stdout,"%s\n", httpResponseHeader);
         //printf("%s\n", buildRequest(hostname,web_file)); //check buildRequest
         //test -d
         if(dDetected && urlWrong == false)
