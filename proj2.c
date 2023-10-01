@@ -43,6 +43,7 @@
 //      *generate the http message in the ideal format in a helper method
 //      *the socket code probably calls
 //r
+//TO DO: free unneeded temp varis
 bool uDetected = false; //initially false as u is not detected
 bool oDetected = false; //initially false as o is not detected
 bool dDetected = false; //initially false as d is not detected
@@ -58,9 +59,13 @@ char* web_file = NULL;  //webfile that will be filled in in web_file
 char httpForm[] = "http://";
 int port = 80; //already define http port to be 80 used in send_receive_sockets()
 char buffer[BUFLEN]; //buffer string used to store http response and then used to parse the response
-char* httpResponseHeader = NULL;
-char resHeader[BUFLEN];
-char* response = NULL; //try to replace buffer with this
+char* httpResponseHeader = NULL; //http Response header 
+char* responseBody = NULL; //data
+char rnrn[] = "\r\n\r\n";
+char* rn = "\r\n"; //used for printing and adding INC to r 
+char* code = (char*)malloc(4); //used to store the response code and the null terminator
+int codeLength = 3;
+char* modified_header = NULL;
 void usage (char *progname)
 {
     fprintf (stderr,"%s ./proj2 -u URL [-d] [-q] [-r] -o filename\n", progname);
@@ -239,6 +244,18 @@ void send_receive_Sockets(char *host_name, char *web_file)
 
     memset(buffer,0x0,BUFLEN);
     ret = read(sd, buffer, BUFLEN -1);
+    
+    if(ret < 0)
+    {
+        printf("reading error\n");
+    }
+    //after all data have been read and stored, close the connection
+    
+    //fprintf (stdout,"%s\n", buffer);
+    //httpResponseHeader = strstr(buffer, "\r\n\r\n");
+    //httpResponseHeader = strstr(buffer, "\r\n\r\n");
+    //httpResponseHeader ='\0'; //null terminate header
+    //strcpy(resHeader, httpResponseHeader);
     /*bufferSize = sizeof(buffer) - 1;
     while(need_to_get_more_response)
     {
@@ -257,21 +274,53 @@ void send_receive_Sockets(char *host_name, char *web_file)
         buffer = (char *)realloc(buffer, bufferSize);
 
     }*/
-    if(ret < 0)
-    {
-        printf("reading error\n");
-    }
-    //fprintf (stdout,"%s\n",buffer);
-    //httpResponseHeader = strstr(buffer, "\r\n\r\n");
-    //httpResponseHeader = strstr(buffer, "\r\n\r\n");
-    //*httpResponseHeader ='\0'; //null terminate header
-    //strcpy(resHeader, httpResponseHeader);
     /* parse the http response */
-    
+    //Find the header
+    char *lastofHeader= strstr(buffer, rnrn);
+    size_t headLength = lastofHeader - buffer; //gets the length of the header that is between the start of the buffer string and the start of \r\n\r\n
+    httpResponseHeader = (char*)malloc(headLength+1);
+    strncpy(httpResponseHeader, buffer, headLength); //copies header (based on its length) from buffer to httpResponseHeader
+    httpResponseHeader[headLength] = '\0'; //null terminate
     /* process the response body */
-            
+    char *after_rnrn = lastofHeader + strlen(rnrn);
+    size_t bodyLength = strlen(after_rnrn); //calculate the string's length starting at the pointer located right after \r\n\r\n
+    responseBody = (char*)malloc(bodyLength+1);
+    strcpy(responseBody, after_rnrn);
+    responseBody[bodyLength] = '\0';
+    /* process the http response code from the header*/       
+    char *after_space = strchr(httpResponseHeader, ' ') + 1; //starting at the position after the first space
+    strncpy(code, after_space, codeLength); //extract 3 characters
+    code[sizeof(code)] = '\0';
+
     /* close & exit */
     close (sd);
+}
+void printR(char *httpResponseHeader, char *rn)
+{
+    //calculate the number of lines in header that ends with \r\n
+    int numLines = 0;
+    char* header_copy = strdup(httpResponseHeader); //make a copy of header
+    char *pointer_of_rn = strstr(header_copy, rn);
+    while(pointer_of_rn != NULL)
+    {
+        numLines++;
+        pointer_of_rn += strlen(rn); //start at the next line
+        pointer_of_rn = strstr(pointer_of_rn, rn); //find  the rn in the rest of the head after moving pointer from prev ;ine to the next line
+    }
+    size_t new_header_length = strlen(header_copy) + strlen("INC: ") + numLines * strlen("INC: "); //allocate INC: one more time for the last line without \r\n
+    modified_header = (char *)malloc(new_header_length + 1);
+    modified_header[0] = '\0';
+    char *line_without_rn = strtok(header_copy, rn);
+    while(line_without_rn !=NULL)
+    {
+        strcat(modified_header, "INC: ");
+        strcat(modified_header, line_without_rn);
+        strcat(modified_header, rn);
+        line_without_rn = strtok(NULL, rn); //cobtinue to get the next line without rn substring from httpResponseHeader (same string)
+    }
+    printf("%s", modified_header);
+    free(modified_header);
+
 }
 //d operation below
 void printD(char *copy_hostname, char *copy_web_file, char *copy_filename)
@@ -291,7 +340,7 @@ void printQ(char *copy_web_file, char *copy_hostname)
 int main (int argc, char *argv [])
 {
     //-o file will be initiated if -u is legit and response is ok 200
-    //should do dqr operations last after sending sockets (?)
+    //should do dqr operations last after sending sockets (?) yea
     //once finished seeing -u and -o then send the request
     parseargs(argc, argv);
     //printf("%s\n", order);
@@ -302,10 +351,10 @@ int main (int argc, char *argv [])
         parseURL(url); //parse url to hostname, web_file
         //send and receive sockets
         send_receive_Sockets(hostname, web_file);
-        fprintf (stdout,"%s\n",buffer); //works, response saved to a limited size buffer
-        //fprintf (stdout,"%s\n", httpResponseHeader);
-        //printf("%s\n", buildRequest(hostname,web_file)); //check buildRequest
+        //fprintf (stdout,"%s\n",buffer); //works, response saved to a limited size buffer
         //test -d
+        //free(buffer);
+        printR(httpResponseHeader, rn);
         if(dDetected && urlWrong == false)
         {
             //printD(hostname, web_file, filename);
