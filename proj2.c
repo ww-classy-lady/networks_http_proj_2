@@ -22,19 +22,6 @@
 #define ARG_CONT 0x8 //o
 #define PROTOCOL "tcp"
 #define BUFLEN 1024
-//General order of methods:
-//parseArgs (gets the url pointer(for u, d, q, r and SOCKETS) and the filename for -o)
-//parseURL
-//SOCKETS(will call a helper method to generate the http request, store that response...and blah blah)
-//^ the helper to generate the http request follows:
-//GET [url_filename] HTTP/1.0\r\n
-//Host: [hostname]\r\n
-//User-Agent: CWRU CSDS 325 SimpleClient 1.0\r\n
-//\r\n
-
-//use the order char to print out 
-//d q or r in the correct order
-
 //URL handling: if the optarg (after -u is not http://...throw error from parsingURL)
 //o
 //FileName handling: if the optarg (after -o is not a valid file name then error from parsingFilename)
@@ -42,13 +29,9 @@
 //d
 //-d to be printed regardless of whether there are errors fetching the web page (sockets).
 //-d will NOT be printed if there are errors in the command line options given by the user.
-//q
-//without networking: will have the OUT: ahead of everything and just prints out the message
-//with networking:
-//      *generate the http message in the ideal format in a helper method
-//      *the socket code probably calls
-//r
+
 //TO DO: free unneeded temp varis
+FILE *file;
 bool uDetected = false; //initially false as u is not detected
 bool oDetected = false; //initially false as o is not detected
 bool dDetected = false; //initially false as d is not detected
@@ -62,7 +45,8 @@ char* hostname = NULL; //hostname that will be filled in parseURL
 char* web_file = NULL;  //webfile that will be filled in in web_file
 char httpForm[] = "http://";
 int port = 80; //already define http port to be 80 used in send_receive_sockets()
-char buffer[BUFLEN]; //buffer string used to store http response and then used to parse the response
+//char buffer[BUFLEN]; //buffer string used to store http response and then used to parse the response
+char *buffer = (char *)malloc(BUFLEN);
 char* httpResponseHeader = NULL; //http Response header 
 char* responseBody = NULL; //data
 char rnrn[] = "\r\n\r\n";
@@ -71,6 +55,9 @@ char* code = (char*)malloc(4); //used to store the response code and the null te
 int codeLength = 3;
 char* modified_header = NULL;
 int ok = 200;
+bool non200 = false;
+int sd; //socket descriptor
+int ret = 1; //initialize the number of bytes read from at a time
 void usage (char *progname)
 {
     fprintf (stderr,"%s ./proj2 -u URL [-d] [-q] [-r] -o filename\n", progname);
@@ -93,25 +80,16 @@ void parseargs(int argc, char *argv [])
             case 'u':
                 uDetected = true;
                 url = optarg;
-                //strcat(url, optarg);
-                //fprintf (stdout, "%s\n", url);
-                //printf ("-u detected: call the parseURL method to parse the url into hostname, urlfilename/path\n");
                 break;
             case 'o':
                 oDetected = true;
                 filename = optarg;
-                //strcat(filename, optarg);
-                //printf ("-o detected: store the response into a file\n");
-                //fprintf (stdout, "%s\n", filename);
                 break;
             case 'd':
                 dDetected = true;
-                //printf ("-d detected: should call dbg to make the dbg messages based on info from -u and -o\n");
                 break;
             case 'q':
                 qDetected = true;
-                //printf ("-q detected: should use a method to  print HTTP request with OUT: ...etc\n");
-                //put this element in the sequence char to track order
                 break;
             case 'r':
                 rDetected = true;
@@ -131,8 +109,6 @@ void parseargs(int argc, char *argv [])
 void parseURL(char* link)
 {
     //have to handle null link, have to handle if link is -o or anythingelse
-    
-    //converting link to char []
     if(strncasecmp(link, httpForm, strlen(httpForm)) == 0) 
     {
         //check if the link starts with "http://" and if so strncasecmp should return 0 for equality
@@ -169,24 +145,6 @@ void parseURL(char* link)
 }
 char* buildRequest(char *host_name, char *web_file)
 {
-    //build the pointer string http request for socket send and receive
-    //char *getFirst = "GET ";
-    //char *getLater = " HTTP/1.0\r\n";
-    //char *hostFirst = "Host: ";
-    //char *hostLater = "\r\n";
-    //char *result =  "User-Agent: CWRU CSDS 325 SimpleClient 1.0\r\n";
-    //size_t total = strlen(getFirst) + strlen(web_file) + strlen(getLater) 
-    //+ strlen(hostFirst) + strlen(host_name) + strlen(hostLater) 
-    //+ strlen(result) + strlen(hostLater);
-    /*char *request = (char *)malloc(total+1);
-    strcpy(request, getFirst);
-    strcat(request, web_file);
-    strcat(request, getLater);
-    strcat(request, hostFirst);
-    strcat(request, host_name);
-    strcat(request, hostLater);
-    strcat(request, result);
-    strcat(request, hostLater); */
     char *result = (char*)malloc(BUFLEN);
     snprintf(result, BUFLEN,
             "GET %s HTTP/1.0\r\n"
@@ -196,14 +154,13 @@ char* buildRequest(char *host_name, char *web_file)
     return result;
 
 }
-void send_receive_Sockets(char *host_name, char *web_file)
+void send_receive_Sockets(char *host_name, char *web_file, char *filename)
 {
     char *temp_hostname[] = {host_name};
     struct sockaddr_in sin;
     struct hostent *hinfo;
     struct protoent *protoinfo;
     char *request;
-    int sd, ret;
     ssize_t sendReturn;
     size_t bufferSize;
     //usage, not really relevant right now
@@ -244,55 +201,71 @@ void send_receive_Sockets(char *host_name, char *web_file)
     /* snarf whatever server provides and print it */
 
     memset(buffer,0x0,BUFLEN);
-    ret = read(sd, buffer, BUFLEN -1);
-    
-    if(ret < 0)
+    size_t current_buffer_size = BUFLEN;
+    size_t current_total_size = 0;
+    ret = 1; //initialized
+    while(ret>0)
     {
-        printf("reading error\n");
-    }
-    //after all data have been read and stored, close the connection
-    
-    //fprintf (stdout,"%s\n", buffer);
-    //httpResponseHeader = strstr(buffer, "\r\n\r\n");
-    //httpResponseHeader = strstr(buffer, "\r\n\r\n");
-    //httpResponseHeader ='\0'; //null terminate header
-    //strcpy(resHeader, httpResponseHeader);
-    /*bufferSize = sizeof(buffer) - 1;
-    while(need_to_get_more_response)
-    {
-        ret = read(sd, buffer, bufferSize);
         if(ret < 0)
         {
-            printf("reading error\n");
-            break;
+            fprintf(stderr, "reading error\n");
         }
-        else if(ret == 0)
+        ret = read(sd, buffer + current_total_size, current_buffer_size - current_total_size -1);
+        current_total_size += ret;
+        if(current_total_size >= current_buffer_size - 1)
         {
-            //finished connection and all response received
-            break;
-        }
-        bufferSize+= ret; //ad the size received by ret to the total bufferSize in order to reallocate more space for buffer
-        buffer = (char *)realloc(buffer, bufferSize);
+            current_buffer_size *=2;
+            char *bigger_buffer = (char *)realloc(buffer, current_buffer_size);
 
-    }*/
+            if(bigger_buffer == NULL)
+            {
+                fprintf(stderr, "ERROR: cannot realloc more spaces");
+                free(buffer);
+            }
+            buffer = bigger_buffer;
+        }
+        //ret = read(sd, buffer, BUFLEN -1);
+    }
+
     /* parse the http response */
+
     //Find the header
     char *lastofHeader= strstr(buffer, rnrn);
     size_t headLength = lastofHeader - buffer; //gets the length of the header that is between the start of the buffer string and the start of \r\n\r\n
     httpResponseHeader = (char*)malloc(headLength+1);
     strncpy(httpResponseHeader, buffer, headLength); //copies header (based on its length) from buffer to httpResponseHeader
     httpResponseHeader[headLength] = '\0'; //null terminate
-    /* process the response body */
-    char *after_rnrn = lastofHeader + strlen(rnrn);
-    size_t bodyLength = strlen(after_rnrn); //calculate the string's length starting at the pointer located right after \r\n\r\n
-    responseBody = (char *)malloc(bodyLength+1);
-    strcpy(responseBody, after_rnrn);
-    responseBody[bodyLength] = '\0';
-    /* process the http response code from the header*/       
+
+    /* process the http response code from the header*/      
     char *after_space = strchr(httpResponseHeader, ' ') + 1; //starting at the position after the first space
     strncpy(code, after_space, codeLength); //extract 3 characters
-    code[sizeof(code)] = '\0';
-
+    code[sizeof(code)] = '\0'; 
+    if(ok != atoi(code))
+    {
+        non200 = true;
+    }
+    else
+    {
+        /* process the response body */
+        /*char *after_rnrn = lastofHeader + strlen(rnrn);
+        size_t bodyLength = strlen(after_rnrn); //calculate the string's length starting at the pointer located right after \r\n\r\n
+        responseBody = (char *)malloc(bodyLength+1);
+        strcpy(responseBody, after_rnrn);
+        responseBody[bodyLength] = '\0';
+        printf(httpResponseHeader);*/
+        //printf(responseBody);
+        FILE *sp = fdopen(sd, "r");
+        char data_buffer[sizeof(buffer)];
+        size_t res_bytes_read;
+        file = fopen(filename, "w");
+        while((res_bytes_read = fread(data_buffer, 1, sizeof(data_buffer), sp)) > 0)
+        {
+            fwrite(data_buffer, 1, res_bytes_read, file);
+        }
+        fclose(file); 
+        //free(data_buffer);
+        /* Check -o and store */
+    }
     /* close & exit */
     close (sd);
 }
@@ -357,12 +330,12 @@ int main (int argc, char *argv [])
         else
         {
             //send and receive sockets
-            send_receive_Sockets(hostname, web_file);
             //print d, q, r
             if(dDetected)
             {
                 printD(hostname, web_file, filename);
             }
+            send_receive_Sockets(hostname, web_file, filename);
             if(qDetected)
             {
                 printQ(web_file, hostname);
@@ -371,22 +344,15 @@ int main (int argc, char *argv [])
             {
                 printR(httpResponseHeader, rn);
             }
-            //do -o
-            if(ok != atoi(code))
+            if(non200)
             {
-                printf("ERROR: non-200 response code");
+                printf("ERROR: non-200 response code\r\n");
             }
+            //do -o
+            
             //else proceed with making file
             
         }
-    
-        //fprintf (stdout,"%s\n",buffer); //works, response saved to a limited size buffer
-        //test -d
-        //free(buffer);
-        //printR(httpResponseHeader, rn);
-        //test -q
-        //test -r 
-        //after all -d,-q,-r passed/finished, find a way to print them in order
     }
     else if(url == NULL)
     {
