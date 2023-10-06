@@ -6,4 +6,4 @@ and responses depending on user command line options.
 
 Provided command line options -u, -d, -q, -r, and -o for the current user to input a URL and
 a filename then view the HTTP response header and store data into any size and type of file
-in the same directory
+in the same directory.
