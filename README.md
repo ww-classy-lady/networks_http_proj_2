@@ -1,4 +1,4 @@
-# networks_http_proj_2
+# networks: HTTP Request and Response Parsing using Socket
 Programmed client-to-server networking using sockets, char arrays, char pointers, macros,
 and type FILE in C to parse command line arguments, parse URL to retrieve the hostname,
 web file, and file name, send and receive sockets, and dynamically handle HTTP requests
